@@ -1,10 +1,13 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { getPageServerFn, savePageServerFn } from "@/data/page";
-import { Puck, Render } from "@puckeditor/core";
+import { useMemo } from "react";
+import { Puck, blocksPlugin, outlinePlugin } from "@puckeditor/core";
 import { resolvePuckPath } from "@/lib";
 import { useServerFn } from "@tanstack/react-start";
-import { createAiPlugin } from "@puckeditor/plugin-ai";
+import { createAiPlugin, withDynamicConfig } from "@puckeditor/plugin-ai";
 import config from "@/puck.config";
+import type { UserData } from "@/puck.config";
+import { PuckRender } from "@/components/puck-render";
 import "@puckeditor/core/puck.css";
 import "@puckeditor/plugin-ai/styles.css";
 
@@ -39,7 +42,7 @@ export const Route = createFileRoute("/$")({
       {
         title: loaderData?.isEditorRoute
           ? "Puck: " + params._splat
-          : (loaderData?.data?.root?.props?.title ?? ""),
+          : loaderData?.data?.root?.props?.title ?? "",
       },
     ],
   }),
@@ -48,18 +51,34 @@ export const Route = createFileRoute("/$")({
   pendingComponent: () => <p>Loading...</p>,
 });
 
-const aiPlugin = createAiPlugin();
+const aiPlugin = createAiPlugin({
+  // Allow users to switch between design and assembly mode.
+  // Read more: https://puckeditor.com/docs/ai/design-mode
+  designMode: {
+    visible: true,
+  },
+  defaultMode: "design",
+});
+
+const plugins = [aiPlugin, blocksPlugin(), outlinePlugin()];
 
 function Editor() {
   const loaderData = Route.useLoaderData();
   const savePage = useServerFn(savePageServerFn);
+  const configWithDesignedComponents = useMemo(
+    () =>
+      withDynamicConfig(config, loaderData.data || { content: [], root: {} }),
+    [loaderData.data]
+  );
   return (
     <Puck
-      config={config}
-      plugins={[aiPlugin]}
+      config={configWithDesignedComponents}
+      plugins={plugins}
       data={loaderData.data || {}}
       onPublish={async (data) => {
-        await savePage({ data: { data, path: loaderData.path } });
+        await savePage({
+          data: { data: data as UserData, path: loaderData.path },
+        });
       }}
     />
   );
@@ -71,6 +90,6 @@ function Page() {
   return loaderData.isEditorRoute ? (
     <Editor />
   ) : (
-    <Render config={config} data={loaderData?.data || {}} />
+    <PuckRender data={loaderData.data || { content: [], root: {} }} />
   );
 }
